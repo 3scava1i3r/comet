@@ -96,17 +96,15 @@ contract Comet is CometMainInterface {
     /// @dev uint64
     uint public override immutable baseTrackingBorrowSpeed;
 
-    /// @notice The minimum amount of base wei for rewards to accrue
+    /// @notice The minimum amount of base principal wei for rewards to accrue
     /// @dev This must be large enough so as to prevent division by base wei from overflowing the 64 bit indices
     /// @dev uint104
     uint public override immutable baseMinForRewards;
 
     /// @notice The minimum base amount required to initiate a borrow
-    /// @dev uint104
     uint public override immutable baseBorrowMin;
 
     /// @notice The minimum base token reserves which must be held before collateral is hodled
-    /// @dev uint104
     uint public override immutable targetReserves;
 
     /// @notice The number of decimals for wrapped base token
@@ -498,9 +496,9 @@ contract Comet is CometMainInterface {
     function getReserves() override public view returns (int) {
         (uint64 baseSupplyIndex_, uint64 baseBorrowIndex_) = accruedInterestIndices(getNowInternal() - lastAccrualTime);
         uint balance = ERC20(baseToken).balanceOf(address(this));
-        uint104 totalSupply_ = presentValueSupply(baseSupplyIndex_, totalSupplyBase);
-        uint104 totalBorrow_ = presentValueBorrow(baseBorrowIndex_, totalBorrowBase);
-        return signed256(balance) - signed104(totalSupply_) + signed104(totalBorrow_);
+        uint totalSupply_ = presentValueSupply(baseSupplyIndex_, totalSupplyBase);
+        uint totalBorrow_ = presentValueBorrow(baseBorrowIndex_, totalBorrowBase);
+        return signed256(balance) - signed256(totalSupply_) + signed256(totalBorrow_);
     }
 
     /**
@@ -695,19 +693,15 @@ contract Comet is CometMainInterface {
     /**
      * @dev Multiply a `fromScale` quantity by a price, returning a common price quantity
      */
-    function mulPrice(uint128 n, uint128 price, uint64 fromScale) internal pure returns (uint) {
-        unchecked {
-            return uint256(n) * price / fromScale;
-        }
+    function mulPrice(uint n, uint128 price, uint64 fromScale) internal pure returns (uint) {
+        return n * price / fromScale;
     }
 
     /**
      * @dev Multiply a signed `fromScale` quantity by a price, returning a common price quantity
      */
-    function signedMulPrice(int128 n, uint128 price, uint64 fromScale) internal pure returns (int) {
-        unchecked {
-            return n * signed256(price) / signed256(fromScale);
-        }
+    function signedMulPrice(int n, uint128 price, uint64 fromScale) internal pure returns (int) {
+        return n * signed256(price) / signed256(fromScale);
     }
 
     /**
@@ -824,7 +818,7 @@ contract Comet is CometMainInterface {
             if (amount == type(uint256).max) {
                 amount = borrowBalanceOf(dst);
             }
-            return supplyBase(from, dst, safe104(amount));
+            return supplyBase(from, dst, amount);
         } else {
             return supplyCollateral(from, dst, asset, safe128(amount));
         }
@@ -833,14 +827,14 @@ contract Comet is CometMainInterface {
     /**
      * @dev Supply an amount of base asset from `from` to dst
      */
-    function supplyBase(address from, address dst, uint104 amount) internal {
+    function supplyBase(address from, address dst, uint256 amount) internal {
         doTransferIn(baseToken, from, amount);
 
         accrueInternal();
 
         UserBasic memory dstUser = userBasic[dst];
         int104 dstPrincipal = dstUser.principal;
-        int104 dstBalance = presentValue(dstPrincipal) + signed104(amount);
+        int256 dstBalance = presentValue(dstPrincipal) + signed256(amount);
         int104 dstPrincipalNew = principalValue(dstBalance);
 
         (uint104 repayAmount, uint104 supplyAmount) = repayAndSupplyAmount(dstPrincipal, dstPrincipalNew);
@@ -936,7 +930,7 @@ contract Comet is CometMainInterface {
             if (amount == type(uint256).max) {
                 amount = balanceOf(src);
             }
-            return transferBase(src, dst, safe104(amount));
+            return transferBase(src, dst, amount);
         } else {
             return transferCollateral(src, dst, asset, safe128(amount));
         }
@@ -945,7 +939,7 @@ contract Comet is CometMainInterface {
     /**
      * @dev Transfer an amount of base asset from src to dst, borrowing if possible/necessary
      */
-    function transferBase(address src, address dst, uint104 amount) internal {
+    function transferBase(address src, address dst, uint256 amount) internal {
         accrueInternal();
 
         UserBasic memory srcUser = userBasic[src];
@@ -953,8 +947,8 @@ contract Comet is CometMainInterface {
 
         int104 srcPrincipal = srcUser.principal;
         int104 dstPrincipal = dstUser.principal;
-        int104 srcBalance = presentValue(srcPrincipal) - signed104(amount);
-        int104 dstBalance = presentValue(dstPrincipal) + signed104(amount);
+        int256 srcBalance = presentValue(srcPrincipal) - signed256(amount);
+        int256 dstBalance = presentValue(dstPrincipal) + signed256(amount);
         int104 srcPrincipalNew = principalValue(srcBalance);
         int104 dstPrincipalNew = principalValue(dstBalance);
 
@@ -969,7 +963,7 @@ contract Comet is CometMainInterface {
         updateBasePrincipal(dst, dstUser, dstPrincipalNew);
 
         if (srcBalance < 0) {
-            if (uint104(-srcBalance) < baseBorrowMin) revert BorrowTooSmall();
+            if (uint256(-srcBalance) < baseBorrowMin) revert BorrowTooSmall();
             if (!isBorrowCollateralized(src)) revert NotCollateralized();
         }
 
@@ -1046,7 +1040,7 @@ contract Comet is CometMainInterface {
             if (amount == type(uint256).max) {
                 amount = balanceOf(src);
             }
-            return withdrawBase(src, to, safe104(amount));
+            return withdrawBase(src, to, amount);
         } else {
             return withdrawCollateral(src, to, asset, safe128(amount));
         }
@@ -1055,12 +1049,12 @@ contract Comet is CometMainInterface {
     /**
      * @dev Withdraw an amount of base asset from src to `to`, borrowing if possible/necessary
      */
-    function withdrawBase(address src, address to, uint104 amount) internal {
+    function withdrawBase(address src, address to, uint256 amount) internal {
         accrueInternal();
 
         UserBasic memory srcUser = userBasic[src];
         int104 srcPrincipal = srcUser.principal;
-        int104 srcBalance = presentValue(srcPrincipal) - signed104(amount);
+        int256 srcBalance = presentValue(srcPrincipal) - signed256(amount);
         int104 srcPrincipalNew = principalValue(srcBalance);
 
         (uint104 withdrawAmount, uint104 borrowAmount) = withdrawAndBorrowAmount(srcPrincipal, srcPrincipalNew);
@@ -1071,7 +1065,7 @@ contract Comet is CometMainInterface {
         updateBasePrincipal(src, srcUser, srcPrincipalNew);
 
         if (srcBalance < 0) {
-            if (uint104(-srcBalance) < baseBorrowMin) revert BorrowTooSmall();
+            if (uint256(-srcBalance) < baseBorrowMin) revert BorrowTooSmall();
             if (!isBorrowCollateralized(src)) revert NotCollateralized();
         }
 
@@ -1140,11 +1134,11 @@ contract Comet is CometMainInterface {
 
         UserBasic memory accountUser = userBasic[account];
         int104 oldPrincipal = accountUser.principal;
-        int104 oldBalance = presentValue(oldPrincipal);
+        int256 oldBalance = presentValue(oldPrincipal);
         uint16 assetsIn = accountUser.assetsIn;
 
         uint128 basePrice = getPrice(baseTokenPriceFeed);
-        uint deltaValue = 0;
+        uint256 deltaValue = 0;
 
         for (uint8 i = 0; i < numAssets; ) {
             if (isInAsset(assetsIn, i)) {
@@ -1162,8 +1156,8 @@ contract Comet is CometMainInterface {
             unchecked { i++; }
         }
 
-        uint104 deltaBalance = safe104(divPrice(deltaValue, basePrice, uint64(baseScale)));
-        int104 newBalance = oldBalance + signed104(deltaBalance);
+        uint256 deltaBalance = divPrice(deltaValue, basePrice, uint64(baseScale));
+        int256 newBalance = oldBalance + signed256(deltaBalance);
         // New balance will not be negative, all excess debt absorbed by reserves
         if (newBalance < 0) {
             newBalance = 0;
@@ -1182,8 +1176,8 @@ contract Comet is CometMainInterface {
         totalSupplyBase += supplyAmount;
         totalBorrowBase -= repayAmount;
 
-        uint104 basePaidOut = unsigned104(newBalance - oldBalance);
-        uint valueOfBasePaidOut = mulPrice(basePaidOut, basePrice, uint64(baseScale));
+        uint256 basePaidOut = unsigned256(newBalance - oldBalance);
+        uint256 valueOfBasePaidOut = mulPrice(basePaidOut, basePrice, uint64(baseScale));
         emit AbsorbDebt(absorber, account, basePaidOut, valueOfBasePaidOut);
     }
 
